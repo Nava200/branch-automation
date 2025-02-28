@@ -1,20 +1,57 @@
 pipeline {
     agent any
+
+    environment {
+        GITHUB_REPO = 'https://github.com/Nava200/branch-automation.git'
+        GITHUB_CREDENTIALS = 'github-token'
+    }
+
     stages {
-        stage('Delete Branches') {
+        stage('Checkout') {
+            steps {
+                git credentialsId: "${GITHUB_CREDENTIALS}", url: "${GITHUB_REPO}"
+            }
+        }
+
+        stage('Identify Branches to Archive/Remove') {
             steps {
                 script {
-                    // List of branches to delete
-                    def branchesToDelete = ['test-branch-1', 'test-branch-2', 'test-branch-3', 'test-branch-4', 'test-branch-5', 'test-branch-6', 'test-branch-7', 'test-branch-8', 'test-branch-9', 'test-branch-10']
+                    def branches = sh(script: 'git branch -r', returnStdout: true).trim().split("\n")
+                    def branchesToArchive = []
+                    def branchesToDelete = []
 
-                    // Delete branches remotely and locally
-                    branchesToDelete.each { branch ->
-                        // Delete branch remotely
-                        sh "git push origin --delete ${branch}"
+                    // Define the conditions for archiving and deletion
+                    branches.each { branch ->
+                        // Example: If branch was last updated over 30 days ago
+                        def lastCommitDate = sh(script: "git log -1 --format=%cd ${branch}", returnStdout: true).trim()
+                        def lastCommitTimestamp = Date.parse('E MMM dd HH:mm:ss yyyy', lastCommitDate).getTime()
+                        def currentTimestamp = new Date().getTime()
 
-                        // Delete branch locally
-                        sh "git branch -D ${branch}"
+                        if ((currentTimestamp - lastCommitTimestamp) > 2592000000) {  // 30 days in milliseconds
+                            branchesToArchive.add(branch)
+                        } else {
+                            branchesToDelete.add(branch)
+                        }
                     }
+
+                    // Archive the branches (this could involve tagging or saving somewhere)
+                    echo "Branches to Archive: ${branchesToArchive}"
+                    echo "Branches to Delete: ${branchesToDelete}"
+                }
+            }
+        }
+
+        stage('Notify Teams') {
+            steps {
+                script {
+                    // Send email notification to respective teams
+                    def emailSubject = "Branch Deletion Notification"
+                    def emailBody = "The following branches have been identified for deletion: ${branchesToDelete.join(', ')}"
+                    emailext(
+                        subject: emailSubject,
+                        body: emailBody,
+                        to: "navaneetha.22june@gmail.com"
+                    )
                 }
             }
         }
