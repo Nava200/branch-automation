@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         GITHUB_REPO = 'https://github.com/Nava200/branch-automation.git'
-        GITHUB_CREDENTIALS = 'github-token'
+        GITHUB_CREDENTIALS = 'github-automation'
     }
 
     stages {
