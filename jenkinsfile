@@ -1,0 +1,45 @@
+pipeline {
+    agent any
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Condition Check') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME ==~ /.*-archive/) {
+                        echo "Archiving branch ${env.BRANCH_NAME}"
+                    } else {
+                        echo "Branch does not meet archiving conditions."
+                    }
+                }
+            }
+        }
+        stage('Branch Deletion') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME ==~ /.*-delete/) {
+                        echo "Marking branch ${env.BRANCH_NAME} for deletion."
+                    }
+                }
+            }
+        }
+        stage('Notification') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME ==~ /.*-delete/) {
+                        echo "Sending notification about deletion to the respective team."
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo 'Pipeline execution complete.'
+        }
+    }
+}
+
