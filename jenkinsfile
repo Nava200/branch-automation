@@ -1,91 +1,22 @@
 pipeline {
     agent any
-    environment {
-        GITHUB_TOKEN = credentials('github-token') // Corrected to reference the GitHub token stored in Jenkins credentials
-        REPO_OWNER = 'Nava200'  // Correct GitHub repository owner (updated here)
-        REPO_NAME = 'branch-automation'   // Replace with your repository name
-    }
     stages {
-        stage('Fetch Branches') {
-            steps {
-                script {
-                    // Fetch branch data using GitHub API and store the response
-                    def response = sh(script: 'curl -s -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/branches', returnStdout: true).trim()
-                    echo "Branches fetched: ${response}"
-                    
-                    // Convert response to JSON for processing
-                    def branches = readJSON text: response
-                    // Define the lists for branches to archive and delete
-                    def branchesToArchive = []
-                    def branchesToDelete = []
-                    
-                    // Define cutoff dates for archiving and deletion logic
-                    def archiveCutoffDate = '2025-01-01T00:00:00Z'  // Example cutoff date for archiving
-                    def deleteCutoffDate = '2024-01-01T00:00:00Z'  // Example cutoff date for deletion
-                    
-                    branches.each { branch ->
-                        // Check if the branch has been last updated before the archive cutoff date
-                        if (branch.commit.committer.date < archiveCutoffDate) {
-                            branchesToArchive.add(branch.name)
-                        }
-                        
-                        // Check if the branch has been last updated before the delete cutoff date and is not protected
-                        if (branch.commit.committer.date < deleteCutoffDate && !branch.protected) {
-                            branchesToDelete.add(branch.name)
-                        }
-                    }
-                    
-                    // Save branch names for further processing
-                    echo "Branches to Archive: ${branchesToArchive}"
-                    echo "Branches to Delete: ${branchesToDelete}"
-                }
-            }
-        }
-
-        stage('Archive Branches') {
-            steps {
-                script {
-                    // Archive branches by tagging them (for example)
-                    branchesToArchive.each { branch ->
-                        echo "Archiving branch: ${branch}"
-                        sh "git tag archived-${branch} origin/${branch}"
-                        sh "git push origin archived-${branch}"
-                    }
-                }
-            }
-        }
-
         stage('Delete Branches') {
             steps {
                 script {
-                    // Delete branches that meet the deletion criteria
-                    branchesToDelete.each { branch ->
-                        echo "Deleting branch: ${branch}"
-                        sh "git push origin --delete ${branch}"
-                    }
-                }
-            }
-        }
+                    // List of branches to delete
+                    def branchesToDelete = ['test-branch-1', 'test-branch-2', 'test-branch-3', 'test-branch-4', 'test-branch-5', 'test-branch-6', 'test-branch-7', 'test-branch-8', 'test-branch-9', 'test-branch-10']
 
-        stage('Notify Teams') {
-            steps {
-                script {
-                    if (branchesToDelete.size() > 0) {
-                        def subject = "Branches Identified for Deletion in ${REPO_OWNER}/${REPO_NAME}"
-                        def body = "The following branches are identified for deletion:\n\n" + branchesToDelete.join('\n')
-                        emailext(
-                            subject: subject,
-                            body: body,
-                            to: 'navaneetha.22june@gmail.com'  // Added your email address
-                        )
+                    // Delete branches remotely and locally
+                    branchesToDelete.each { branch ->
+                        // Delete branch remotely
+                        sh "git push origin --delete ${branch}"
+
+                        // Delete branch locally
+                        sh "git branch -D ${branch}"
                     }
                 }
             }
-        }
-    }
-    post {
-        always {
-            echo "Pipeline finished"
         }
     }
 }
