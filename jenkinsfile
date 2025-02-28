@@ -1,45 +1,94 @@
 pipeline {
     agent any
+
+    environment {
+        GITHUB_REPO = 'https://github.com/Nava200/branch-automation.git'
+    }
+
     stages {
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                checkout scm
+                script {
+                    checkout scm
+                }
             }
         }
+
         stage('Condition Check') {
             steps {
                 script {
-                    if (env.BRANCH_NAME ==~ /.*-archive/) {
-                        echo "Archiving branch ${env.BRANCH_NAME}"
-                    } else {
-                        echo "Branch does not meet archiving conditions."
+                    // Example condition: Archiving branches older than 30 days
+                    def branches = sh(script: "git branch -r --format '%(refname:short)'", returnStdout: true).trim().split("\n")
+                    def currentBranch = env.BRANCH_NAME
+
+                    // Iterate through branches and check conditions
+                    branches.each { branch ->
+                        if (branch != "origin/main") {
+                            def lastCommitDate = sh(script: "git log -1 --format=%ci origin/${branch}", returnStdout: true).trim()
+                            def commitDate = Date.parse("yyyy-MM-dd HH:mm:ss Z", lastCommitDate)
+                            def currentDate = new Date()
+
+                            // Check if branch was last committed to more than 30 days ago
+                            if ((currentDate - commitDate) > 30) {
+                                echo "Branch ${branch} is older than 30 days and is a candidate for archiving."
+                                // Archive logic: you can implement your archiving logic here
+                            }
+                        }
                     }
                 }
             }
         }
+
         stage('Branch Deletion') {
             steps {
                 script {
-                    if (env.BRANCH_NAME ==~ /.*-delete/) {
-                        echo "Marking branch ${env.BRANCH_NAME} for deletion."
+                    // Example condition: Deleting branches that are stale or no longer needed
+                    def branchesToDelete = []
+                    def branches = sh(script: "git branch -r --format '%(refname:short)'", returnStdout: true).trim().split("\n")
+
+                    // Identify branches that should be deleted (e.g., branches that have been merged into main)
+                    branches.each { branch ->
+                        if (branch != "origin/main") {
+                            // Assume a branch can be deleted if it has been merged into main
+                            def isMerged = sh(script: "git branch --merged main | grep ${branch}", returnStatus: true)
+                            if (isMerged == 0) {
+                                branchesToDelete.add(branch)
+                            }
+                        }
+                    }
+
+                    // Delete branches that are identified
+                    if (branchesToDelete.size() > 0) {
+                        branchesToDelete.each { branch ->
+                            echo "Branch ${branch} is merged into main and marked for deletion."
+                            // Implement the deletion logic here
+                            sh "git push origin --delete ${branch}" // This deletes the branch on GitHub
+                        }
+                    } else {
+                        echo "No branches found for deletion."
                     }
                 }
             }
         }
+
         stage('Notification') {
             steps {
                 script {
-                    if (env.BRANCH_NAME ==~ /.*-delete/) {
-                        echo "Sending notification about deletion to the respective team."
+                    // Notify team about branches marked for deletion
+                    if (branchesToDelete.size() > 0) {
+                        echo "Sending notifications to the team about branches to be deleted: ${branchesToDelete}"
+                        // You can use email or Slack notifications here
+                    } else {
+                        echo "No branches to delete."
                     }
                 }
             }
         }
-    }
-    post {
-        always {
-            echo 'Pipeline execution complete.'
+
+        stage('Post Actions') {
+            steps {
+                echo "Pipeline execution complete."
+            }
         }
     }
 }
-
