@@ -1,82 +1,27 @@
 pipeline {
     agent any
 
-    environment {
-        GITHUB_REPO = 'https://github.com/Nava200/branch-automation.git'
-    }
-
     stages {
         stage('Checkout SCM') {
             steps {
-                script {
-                    checkout scm
-                }
+                checkout scm
             }
         }
 
-        stage('Condition Check') {
+        stage('Test Branch Fetch and Date') {
             steps {
                 script {
-                    def branches = sh(script: "git branch -r --format '%(refname:short)'", returnStdout: true).trim().split("\n")
-                    def currentBranch = env.BRANCH_NAME
+                    def branches = sh(script: 'git branch -r --format "%(refname:short)"', returnStdout: true).trim().split("\n")
+                    def currentDate = new Date()
 
                     branches.each { branch ->
-                        if (branch != "origin/main") {
-                            def lastCommitDate = sh(script: "git log -1 --format=%ci ${branch}", returnStdout: true).trim()
-                            def commitDate = Date.parse("yyyy-MM-dd HH:mm:ss Z", lastCommitDate)
-                            def currentDate = new Date()
+                        def lastCommitDateStr = sh(script: "git log -1 --format=%ci origin/${branch}", returnStdout: true).trim()
+                        def lastCommitDate = Date.parse("yyyy-MM-dd HH:mm:ss Z", lastCommitDateStr)
+                        def diffInDays = (currentDate - lastCommitDate) / (1000 * 60 * 60 * 24)
 
-                            if ((currentDate - commitDate) > 30) {
-                                echo "Branch ${branch} is older than 30 days and is a candidate for archiving."
-                            }
-                        }
+                        echo "Branch: ${branch} - Last Commit Date: ${lastCommitDateStr} - Days Since Last Commit: ${diffInDays}"
                     }
                 }
-            }
-        }
-
-        stage('Branch Deletion') {
-            steps {
-                script {
-                    def branchesToDelete = []
-                    def branches = sh(script: "git branch -r --format '%(refname:short)'", returnStdout: true).trim().split("\n")
-
-                    branches.each { branch ->
-                        if (branch != "origin/main") {
-                            def isMerged = sh(script: "git branch --merged main | grep ${branch}", returnStatus: true)
-                            if (isMerged == 0) {
-                                branchesToDelete.add(branch)
-                            }
-                        }
-                    }
-
-                    if (branchesToDelete.size() > 0) {
-                        branchesToDelete.each { branch ->
-                            echo "Branch ${branch} is merged into main and marked for deletion."
-                            sh "git push origin --delete ${branch}"
-                        }
-                    } else {
-                        echo "No branches found for deletion."
-                    }
-                }
-            }
-        }
-
-        stage('Notification') {
-            steps {
-                script {
-                    if (branchesToDelete.size() > 0) {
-                        echo "Sending notifications to the team about branches to be deleted: ${branchesToDelete}"
-                    } else {
-                        echo "No branches to delete."
-                    }
-                }
-            }
-        }
-
-        stage('Post Actions') {
-            steps {
-                echo "Pipeline execution complete."
             }
         }
     }
