@@ -42,8 +42,6 @@ pipeline {
                         def branches = sh(script: "git -C ${repoDir} branch -r", returnStdout: true).trim().split("\n")
                         echo "Fetched branches: ${branches}"
 
-                        // Example condition for archiving: branches with "feature" in the name
-                        // Example condition for deletion: branches older than a certain date or marked as "obsolete"
                         def commitDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/main", returnStdout: true).trim()
                         def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
                         def parsedDate = sdf.parse(commitDate)
@@ -56,7 +54,7 @@ pipeline {
                                 archiveBranches.add(cleanBranchName)
                             }
 
-                            // Deletion condition: branches older than a certain date or with "obsolete" in the name
+                            // Deletion condition
                             if (cleanBranchName.contains("obsolete") || isOlderThan(parsedDate, cleanBranchName, repoDir)) {
                                 deleteBranches.add(cleanBranchName)
                             }
@@ -95,9 +93,8 @@ pipeline {
                 script {
                     def branchesToArchive = env.BRANCHES_TO_ARCHIVE.split(', ')
                     branchesToArchive.each { branch ->
-                        // Add archiving logic here (e.g., create a tag, zip the branch content, etc.)
+                        // Add archiving logic here
                         echo "Archiving branch: ${branch}"
-                        // Example of tagging the branch before archiving
                         REPOS.each { REPO ->
                             def repoDir = "repo-${REPO.hashCode()}"
                             sh "git -C ${repoDir} checkout ${branch}"
@@ -116,7 +113,7 @@ pipeline {
                 script {
                     def branchesToDelete = env.BRANCHES_TO_DELETE.split(', ')
                     branchesToDelete.each { branch ->
-                        // Add deletion logic here (e.g., delete the branch from the remote)
+                        // Add deletion logic here
                         echo "Deleting branch: ${branch}"
                         REPOS.each { REPO ->
                             def repoDir = "repo-${REPO.hashCode()}"
@@ -137,4 +134,29 @@ pipeline {
             echo 'Pipeline completed successfully'
         }
         failure {
-            echo 'Pipeline fai
+            echo 'Pipeline failed, check logs for details'
+        }
+
+        // Send email notification after the pipeline is complete
+        always {
+            script {
+                emailext (
+                    subject: "Jenkins Pipeline: ${currentBuild.fullDisplayName} - ${currentBuild.result}",
+                    body: """
+                        The Jenkins pipeline ${currentBuild.fullDisplayName} has finished with result: ${currentBuild.result}.
+                        Please check the logs for details.
+                    """,
+                    to: "navaneetha.22june@gmail.com" // Replace with your actual email address
+                )
+            }
+        }
+    }
+}
+
+// Helper function to check if a branch is older than a given date
+def isOlderThan(Date commitDate, String branch, String repoDir) {
+    def branchDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
+    def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
+    def parsedBranchDate = sdf.parse(branchDate)
+    return parsedBranchDate.before(commitDate)
+}
