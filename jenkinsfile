@@ -13,64 +13,60 @@ pipeline {
                 script {
                     // Checkout the Git repository using the defined GitHub credentials
                     checkout([$class: 'GitSCM', 
-                        branches: [[name: "*/${BRANCH_NAME}"]],
+                        branches: [[name: "*/${BRANCH_NAME}"]], 
                         userRemoteConfigs: [[url: "${REPO_URL}", credentialsId: "${GITHUB_CREDENTIALS}"]]
                     ])
                 }
             }
         }
-stage('Identify Branches') {
-    steps {
-        script {
-            // Get the list of remote branches, stripping the 'origin/' prefix
-            def branches = sh(script: "git branch -r", returnStdout: true).trim().split("\n")
-            def branchesToArchive = []
-            def branchesToDelete = []
 
-            // Loop through each branch and get the last commit date
-            branches.each { branch ->
-                // Remove the 'origin/' prefix
-                def branchName = branch.trim().replace('origin/', '')
-                
-                // Skip if it's the main branch
-                if (branchName == "main") {
-                    return
-                }
+        stage('Identify Branches') {
+            steps {
+                script {
+                    // Get the list of remote branches, stripping the 'origin/' prefix
+                    def branches = sh(script: "git branch -r", returnStdout: true).trim().split("\n")
+                    def branchesToArchive = []
+                    def branchesToDelete = []
 
-                // Get the last commit date for each branch
-                def lastCommitDate = sh(script: "git show -s --format=%ci origin/${branchName}", returnStdout: true).trim()
+                    // Loop through each branch and get the last commit date
+                    branches.each { branch ->
+                        def branchName = branch.trim().replace('origin/', '')
 
-                // Convert the date to seconds using a format that `date` can process
-                def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
-                def currentTimestamp = sh(script: "date +%s", returnStdout: true).trim()
+                        // Skip if it's the main branch
+                        if (branchName == "main") {
+                            return
+                        }
 
-                // Calculate the age of the branch in seconds
-                def ageInSeconds = currentTimestamp.toInteger() - commitTimestamp.toInteger()
-                // Convert the age to minutes
-                def ageInMinutes = ageInSeconds / 60
+                        // Get the last commit date for each branch
+                        def lastCommitDate = sh(script: "git show -s --format=%ci origin/${branchName}", returnStdout: true).trim()
+                        def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
+                        def currentTimestamp = sh(script: "date +%s", returnStdout: true).trim()
 
-                // Archive branches older than 90 minutes (15 hours)
-                if (ageInMinutes > 90) {
-                    branchesToArchive.add(branchName)
-                }
+                        // Calculate the age of the branch in minutes
+                        def ageInSeconds = currentTimestamp.toInteger() - commitTimestamp.toInteger()
+                        def ageInMinutes = ageInSeconds / 60
 
-                // Delete branches older than 180 minutes (30 hours)
-                if (ageInMinutes > 180) {
-                    branchesToDelete.add(branchName)
+                        // Archive branches older than 90 minutes
+                        if (ageInMinutes > 90) {
+                            branchesToArchive.add(branchName)
+                        }
+
+                        // Delete branches older than 180 minutes
+                        if (ageInMinutes > 180) {
+                            branchesToDelete.add(branchName)
+                        }
+                    }
+
+                    // Output results
+                    echo "Branches to archive: ${branchesToArchive}"
+                    echo "Branches to delete: ${branchesToDelete}"
+
+                    // Save the branches lists as environment variables
+                    env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(",")
+                    env.BRANCHES_TO_DELETE = branchesToDelete.join(",")
                 }
             }
-
-            // Output results
-            echo "Branches to archive: ${branchesToArchive}"
-            echo "Branches to delete: ${branchesToDelete}"
-
-            // Save the branches lists as environment variables
-            env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(",")
-            env.BRANCHES_TO_DELETE = branchesToDelete.join(",")
         }
-    }
-}
-
 
         stage('Notify Teams') {
             steps {
@@ -97,20 +93,26 @@ stage('Identify Branches') {
                     if (env.BRANCHES_TO_ARCHIVE) {
                         def branchesToArchive = env.BRANCHES_TO_ARCHIVE.split(",")
                         branchesToArchive.each { branch ->
-                            // Archive the branch by tagging it
-                            echo "Archiving branch: ${branch}"
+                            // Check if the branch exists before attempting to archive it
+                            echo "Checking if branch exists: ${branch}"
+                            def branchExists = sh(script: "git show-ref refs/heads/${branch}", returnStatus: true)
+                            
+                            if (branchExists == 0) {
+                                echo "Archiving branch: ${branch}"
+                                // Checkout the branch to be archived
+                                sh "git checkout ${branch}"
 
-                            // Checkout the branch to be archived
-                            sh "git checkout ${branch}"
+                                // Create a tag for archiving purposes
+                                sh "git tag archived-${branch} ${branch}"
 
-                            // Create a tag for archiving purposes (you can name it something like 'archived-<branch-name>')
-                            sh "git tag archived-${branch} ${branch}"
+                                // Push the tag to the remote repository
+                                sh "git push origin archived-${branch}"
 
-                            // Push the tag to the remote repository
-                            sh "git push origin archived-${branch}"
-
-                            // Optionally, you can delete the local tag after pushing it
-                            sh "git tag -d archived-${branch}"
+                                // Optionally, delete the local tag after pushing it
+                                sh "git tag -d archived-${branch}"
+                            } else {
+                                echo "Branch ${branch} not found. Skipping archive."
+                            }
                         }
                     }
                 }
@@ -123,17 +125,24 @@ stage('Identify Branches') {
                     if (env.BRANCHES_TO_DELETE) {
                         def branchesToDelete = env.BRANCHES_TO_DELETE.split(",")
                         branchesToDelete.each { branch ->
-                            // Perform the deletion using Git command
-                            echo "Deleting branch: ${branch}"
+                            // Check if the branch exists before attempting to delete it
+                            echo "Checking if branch exists: ${branch}"
+                            def branchExists = sh(script: "git show-ref refs/heads/${branch}", returnStatus: true)
 
-                            // Fetch the latest information from the remote repository
-                            sh "git fetch --prune"
-                            
-                            // Delete the branch remotely using Git
-                            sh "git push origin --delete ${branch}"
-                            
-                            // Optionally, delete the local branch as well
-                            sh "git branch -D ${branch}"
+                            if (branchExists == 0) {
+                                echo "Deleting branch: ${branch}"
+
+                                // Fetch the latest information from the remote repository
+                                sh "git fetch --prune"
+
+                                // Delete the branch remotely using Git
+                                sh "git push origin --delete ${branch}"
+
+                                // Optionally, delete the local branch as well
+                                sh "git branch -D ${branch}"
+                            } else {
+                                echo "Branch ${branch} not found. Skipping delete."
+                            }
                         }
                     }
                 }
