@@ -4,6 +4,7 @@ pipeline {
     environment {
         GIT_REPO = 'https://github.com/Nava200/branch-automation.git'
         GIT_CREDENTIALS = 'github-automation'
+        BRANCH_THRESHOLD_DAYS = 30  // Set the threshold for branch deletion in days
     }
 
     stages {
@@ -31,17 +32,24 @@ pipeline {
                             echo "Checking branch: ${branchName}"
                             def lastCommitDate = sh(script: "git log -1 --format=%cd ${branch}", returnStdout: true).trim()
                             echo "Last commit date for ${branchName}: ${lastCommitDate}"
-                            
-                            // Add any logic for deciding whether to delete or archive the branch
-                            // Example: Check if branch is older than 30 days (you can customize this)
-                            def lastCommitTime = Date.parse("yyyy-MM-dd", lastCommitDate)
-                            def currentTime = new Date()
-                            def diffInDays = (currentTime - lastCommitTime) / (1000 * 60 * 60 * 24)
-                            if (diffInDays > 30) {
-                                echo "Branch ${branchName} is older than 30 days and can be deleted"
-                                // Add deletion or archival logic here
+
+                            // Parse the commit date and calculate days since last commit
+                            def format = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
+                            def branchCommitDate = format.parse(lastCommitDate)
+                            def currentDate = new Date()
+
+                            // Calculate the difference in days
+                            def diffInMillis = currentDate.getTime() - branchCommitDate.getTime()
+                            def diffInDays = (diffInMillis / (1000 * 60 * 60 * 24))
+
+                            echo "The branch ${branchName} was last committed on ${lastCommitDate}. It was ${diffInDays} days ago."
+
+                            // Check if the branch is older than the threshold
+                            if (diffInDays > env.BRANCH_THRESHOLD_DAYS.toInteger()) {
+                                echo "Branch ${branchName} is older than ${env.BRANCH_THRESHOLD_DAYS} days."
+                                // Add logic for archiving or deleting the branch
                             } else {
-                                echo "Branch ${branchName} is still active"
+                                echo "Branch ${branchName} is within the threshold."
                             }
                         }
                     }
@@ -56,9 +64,10 @@ pipeline {
             steps {
                 echo 'Notifying teams about the failure'
                 // Add logic to notify teams, e.g., send an email or Slack notification
+                // Example: 
+                // mail to: 'navaneetha.22june@gmail.com', subject: 'Pipeline Failure Notification', body: 'The branch automation pipeline has failed.'
             }
         }
-
     }
 
     post {
