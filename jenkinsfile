@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        GIT_CREDENTIALS = 'github-automation'  // GitHub credentials
-        REPOS = ["https://github.com/Nava200/branch-automation.git", "https://github.com/Nava200/Getting-Started-Terraform.git"]  // List of repositories
+        GIT_CREDENTIALS = 'github-automation'  // GitHub credentials ID in Jenkins
+        REPOS = ['https://github.com/Nava200/branch-automation.git', 'https://github.com/Nava200/Getting-Started-Terraform.git']  // List of repositories
         BRANCHES_TO_ARCHIVE = ''
         BRANCHES_TO_DELETE = ''
     }
@@ -12,10 +12,10 @@ pipeline {
         stage('Checkout Repositories') {
             steps {
                 script {
-                    // Iterate over each repository
+                    // Clone repositories to Jenkins workspace
                     REPOS.each { REPO ->
                         echo "Cloning repository: ${REPO}"
-                        dir("repo-${REPO.hashCode()}") {  // Unique folder per repo
+                        dir("repo-${REPO.hashCode()}") {
                             checkout scm: [
                                 $class: 'GitSCM',
                                 branches: [[name: 'origin/main']],
@@ -27,35 +27,37 @@ pipeline {
             }
         }
 
-        stage('Fetch and Identify Branches to Archive/Remove') {
+        stage('Identify Branches to Archive/Delete') {
             steps {
                 script {
                     def archiveBranches = []
                     def deleteBranches = []
 
-                    // Iterate over each repository to fetch branches and check conditions
+                    // For each repository, fetch branches and identify which to archive or delete
                     REPOS.each { REPO ->
                         echo "Fetching all remote branches for repository: ${REPO}"
                         def repoDir = "repo-${REPO.hashCode()}"
-
-                        // Fetch all remote branches
                         def branches = sh(script: "git -C ${repoDir} branch -r", returnStdout: true).trim().split("\n")
                         echo "Fetched branches: ${branches}"
 
-                        def commitDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/main", returnStdout: true).trim()
-                        def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-                        def parsedDate = sdf.parse(commitDate)
-
+                        // Process each branch
                         branches.each { branch ->
-                            def cleanBranchName = branch.replaceAll("origin/", "").trim()
+                            def cleanBranchName = branch.replace("origin/", "").trim()
 
-                            // Archiving condition
+                            // Archiving condition: Example (branch name contains 'feature')
                             if (cleanBranchName.contains("feature")) {
                                 archiveBranches.add(cleanBranchName)
                             }
 
-                            // Deletion condition
-                            if (cleanBranchName.contains("obsolete") || isOlderThan(parsedDate, cleanBranchName, repoDir)) {
+                            // Deletion condition: Example (branch older than 30 days)
+                            def commitDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
+                            def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
+                            def parsedDate = sdf.parse(commitDate)
+                            def currentDate = new Date()
+                            def diffInDays = (currentDate - parsedDate) / (1000 * 60 * 60 * 24)
+
+                            // Deletion condition: Branch is older than 30 days
+                            if (diffInDays > 30) {
                                 deleteBranches.add(cleanBranchName)
                             }
                         }
@@ -74,12 +76,12 @@ pipeline {
         stage('Notify Teams') {
             steps {
                 script {
-                    // Send email notifications about the branches to archive or delete
+                    // Send email notifications to the respective team
                     emailext(
-                        subject: "Branches to Archive/Remove",
+                        subject: "Branches to Archive/Delete",
                         body: "Following branches need to be archived: ${env.BRANCHES_TO_ARCHIVE}\n\n" +
                               "Following branches are identified for deletion: ${env.BRANCHES_TO_DELETE}",
-                        to: "navaneetha.22june@gmail.com"  // Replace with actual recipient email(s)
+                        to: "navaneetha.22june@gmail.com"  // Replace with actual email(s)
                     )
                 }
             }
@@ -93,12 +95,11 @@ pipeline {
                 script {
                     def branchesToArchive = env.BRANCHES_TO_ARCHIVE.split(', ')
                     branchesToArchive.each { branch ->
-                        // Add archiving logic here
                         echo "Archiving branch: ${branch}"
                         REPOS.each { REPO ->
                             def repoDir = "repo-${REPO.hashCode()}"
                             sh "git -C ${repoDir} checkout ${branch}"
-                            sh "git -C ${repoDir} tag archived-${branch}"
+                            sh "git -C ${repoDir} tag archived-${branch}"  // Example: Tagging the branch as archived
                         }
                     }
                 }
@@ -113,11 +114,10 @@ pipeline {
                 script {
                     def branchesToDelete = env.BRANCHES_TO_DELETE.split(', ')
                     branchesToDelete.each { branch ->
-                        // Add deletion logic here
                         echo "Deleting branch: ${branch}"
                         REPOS.each { REPO ->
                             def repoDir = "repo-${REPO.hashCode()}"
-                            sh "git -C ${repoDir} push origin --delete ${branch}"
+                            sh "git -C ${repoDir} push origin --delete ${branch}"  // Delete branch from remote
                         }
                     }
                 }
@@ -128,26 +128,13 @@ pipeline {
     post {
         always {
             echo 'Cleaning up workspace'
-            cleanWs()
-
-            script {
-                emailext (
-                    subject: "Jenkins Pipeline: ${currentBuild.fullDisplayName} - ${currentBuild.result}",
-                    body: """
-                        The Jenkins pipeline ${currentBuild.fullDisplayName} has finished with result: ${currentBuild.result}.
-                        Please check the logs for details.
-                    """,
-                    to: "navaneetha.22june@gmail.com" // Replace with your actual email address
-                )
-            }
+            cleanWs()  // Cleanup workspace after build
+        }
+        success {
+            echo 'Pipeline completed successfully'
+        }
+        failure {
+            echo 'Pipeline failed, check logs for details'
         }
     }
-}
-
-// Helper function to check if a branch is older than a given date
-def isOlderThan(Date commitDate, String branch, String repoDir) {
-    def branchDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
-    def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-    def parsedBranchDate = sdf.parse(branchDate)
-    return parsedBranchDate.before(commitDate)
 }
