@@ -32,37 +32,42 @@ pipeline {
         }
 
         stage('Identify Branches to Archive/Remove') {
-            steps {
-                script {
-                    def archiveBranches = []
-                    def deleteBranches = []
+    steps {
+        script {
+            def archiveBranches = []
+            def deleteBranches = []
 
-                    // Fetch all remote branches
-                    def branches = sh(script: "git -C repo-${REPO.hashCode()} branch -r", returnStdout: true).trim().split("\n")
-                    def commitDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/main", returnStdout: true).trim()
+            // Fetch all remote branches
+            def branches = sh(script: "git -C repo-${REPO.hashCode()} branch -r", returnStdout: true).trim().split("\n")
+            
+            // Correcting the git log command to use the correct reference "origin/main"
+            def commitDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/main", returnStdout: true).trim()
 
-                    // Parse the commit date using SimpleDateFormat
-                    def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-                    def parsedDate = sdf.parse(commitDate)
+            // Parse the commit date using SimpleDateFormat
+            def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
+            def parsedDate = sdf.parse(commitDate)
 
-                    // Example condition for archiving: branches with "feature" in the name
-                    branches.each { branch ->
-                        if (branch.contains("feature")) {
-                            archiveBranches.add(branch)
-                        }
-                        // Example condition for deletion: branches older than a certain date or with "obsolete" in the name
-                        if (branch.contains("obsolete") || isOlderThan(parsedDate, branch)) {
-                            deleteBranches.add(branch)
-                        }
-                    }
-
-                    // Set the archive and delete lists to environment variables
-                    env.BRANCHES_TO_ARCHIVE = archiveBranches.join(', ')
-                    env.BRANCHES_TO_DELETE = deleteBranches.join(', ')
-
-                    echo "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}"
-                    echo "Branches to delete: ${env.BRANCHES_TO_DELETE}"
+            // Example condition for archiving: branches with "feature" in the name
+            branches.each { branch ->
+                if (branch.contains("feature")) {
+                    archiveBranches.add(branch)
                 }
+                // Example condition for deletion: branches older than a certain date or with "obsolete" in the name
+                if (branch.contains("obsolete") || isOlderThan(parsedDate, branch)) {
+                    deleteBranches.add(branch)
+                }
+            }
+
+            // Set the archive and delete lists to environment variables
+            env.BRANCHES_TO_ARCHIVE = archiveBranches.join(', ')
+            env.BRANCHES_TO_DELETE = deleteBranches.join(', ')
+
+            echo "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}"
+            echo "Branches to delete: ${env.BRANCHES_TO_DELETE}"
+        }
+    }
+}
+
             }
         }
 
@@ -79,9 +84,7 @@ pipeline {
                 }
             }
         }
-    }
-}
-
+    
 def isOlderThan(Date commitDate, String branch) {
     // Example logic to check if a branch is older than a specific date
     def branchDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
