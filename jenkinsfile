@@ -30,8 +30,11 @@ pipeline {
                         if (branch.startsWith("origin/")) {
                             def branchName = branch.replace("origin/", "").trim()
                             def lastCommitDate = sh(script: "git log -1 --format=%cd ${branch}", returnStdout: true).trim()
-                            def commitDate = Date.parse("EEE MMM dd HH:mm:ss yyyy Z", lastCommitDate)
-                            def diffInDays = (new Date() - commitDate) / (1000 * 60 * 60 * 24)
+
+                            // Convert the commit date to a timestamp and calculate the difference in days
+                            def commitTimestamp = sh(script: "date -d \"${lastCommitDate}\" +%s", returnStdout: true).trim().toLong()
+                            def currentTimestamp = new Date().getTime() / 1000
+                            def diffInDays = (currentTimestamp - commitTimestamp) / (60 * 60 * 24)
 
                             if (diffInDays > 15) {
                                 archiveBranches.add(branchName)
