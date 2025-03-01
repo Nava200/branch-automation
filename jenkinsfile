@@ -4,7 +4,6 @@ pipeline {
     environment {
         GIT_REPO = 'https://github.com/Nava200/branch-automation.git'
         GIT_CREDENTIALS = 'github-automation'
-        BRANCH_THRESHOLD_DAYS = 30  // Set the threshold for branch deletion in days
     }
 
     stages {
@@ -25,6 +24,10 @@ pipeline {
                     def branches = sh(script: 'git branch -r', returnStdout: true).trim().split("\n")
                     echo "Fetched branches: ${branches}"
 
+                    // Initialize counters for archived and deleted branches
+                    def archivedCount = 0
+                    def deletedCount = 0
+
                     // For each branch, check the commit date
                     for (branch in branches) {
                         if (branch.startsWith("origin/")) {
@@ -33,39 +36,28 @@ pipeline {
                             def lastCommitDate = sh(script: "git log -1 --format=%cd ${branch}", returnStdout: true).trim()
                             echo "Last commit date for ${branchName}: ${lastCommitDate}"
 
-                            // Parse the commit date and calculate days since last commit
-                            def format = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-                            def branchCommitDate = format.parse(lastCommitDate)
-                            def currentDate = new Date()
-
-                            // Calculate the difference in days
-                            def diffInMillis = currentDate.getTime() - branchCommitDate.getTime()
-                            def diffInDays = (diffInMillis / (1000 * 60 * 60 * 24))
-
-                            echo "The branch ${branchName} was last committed on ${lastCommitDate}. It was ${diffInDays} days ago."
-
-                            // Check if the branch is older than the threshold
-                            if (diffInDays > env.BRANCH_THRESHOLD_DAYS.toInteger()) {
-                                echo "Branch ${branchName} is older than ${env.BRANCH_THRESHOLD_DAYS} days."
-                                // Add logic for archiving or deleting the branch
+                            // Add any logic for deciding whether to delete or archive the branch
+                            // Example: Check if branch is older than 30 days (you can customize this)
+                            def lastCommitTime = Date.parse("yyyy-MM-dd", lastCommitDate)
+                            def currentTime = new Date()
+                            def diffInDays = (currentTime - lastCommitTime) / (1000 * 60 * 60 * 24)
+                            if (diffInDays > 30) {
+                                echo "Branch ${branchName} is older than 30 days and will be deleted"
+                                // Simulate branch deletion (for real deletion, use git or GitHub API)
+                                deletedCount++
+                                // Delete the branch (Uncomment this if you want to actually delete it)
+                                // sh "git push origin --delete ${branchName}"
                             } else {
-                                echo "Branch ${branchName} is within the threshold."
+                                echo "Branch ${branchName} is still active and will be archived"
+                                archivedCount++
+                                // Add logic for archiving the branch (e.g., moving the branch to an archive folder)
                             }
                         }
                     }
-                }
-            }
-        }
 
-        stage('Notify Teams') {
-            when {
-                expression { return currentBuild.result == 'FAILURE' }
-            }
-            steps {
-                echo 'Notifying teams about the failure'
-                // Add logic to notify teams, e.g., send an email or Slack notification
-                // Example: 
-                // mail to: 'navaneetha.22june@gmail.com', subject: 'Pipeline Failure Notification', body: 'The branch automation pipeline has failed.'
+                    // Set the variables so they can be used in email notification
+                    currentBuild.description = "Archived: ${archivedCount}, Deleted: ${deletedCount}"
+                }
             }
         }
     }
@@ -80,6 +72,24 @@ pipeline {
         }
         failure {
             echo 'Pipeline failed, check logs for details'
+        }
+
+        // Send email notification after the pipeline is complete
+        always {
+            script {
+                emailext (
+                    subject: "Jenkins Pipeline: ${currentBuild.fullDisplayName} - ${currentBuild.result}",
+                    body: """
+                        The Jenkins pipeline ${currentBuild.fullDisplayName} has finished with result: ${currentBuild.result}.
+                        
+                        Number of branches archived: ${archivedCount}
+                        Number of branches deleted: ${deletedCount}
+                        
+                        Please check the logs for details.
+                    """,
+                    to: "navaneetha.22june@gmail.com" // Replace with your actual email address
+                )
+            }
         }
     }
 }
