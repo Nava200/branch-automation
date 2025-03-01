@@ -13,7 +13,7 @@ pipeline {
                 script {
                     // Checkout the Git repository using the defined GitHub credentials
                     checkout([$class: 'GitSCM', 
-                        branches: [[name: "*/${BRANCH_NAME}"]],
+                        branches: [[name: "*/${BRANCH_NAME}"]], 
                         userRemoteConfigs: [[url: "${REPO_URL}", credentialsId: "${GITHUB_CREDENTIALS}"]]
                     ])
                 }
@@ -27,9 +27,9 @@ pipeline {
                     def branches = sh(script: "git branch -r", returnStdout: true).trim().split("\n")
                     def branchesToArchive = []
                     def branchesToDelete = []
-                    
+
                     // Get the last commit date of the main branch
-                    def lastCommitDate = sh(script: "git log -1 --format=%cd origin/main", returnStdout: true).trim()
+                    def lastCommitDate = sh(script: "git log -1 --format=%cd origin/${BRANCH_NAME}", returnStdout: true).trim()
                     
                     // Convert the date to seconds
                     def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
@@ -39,21 +39,26 @@ pipeline {
                     def ageInSeconds = currentTimestamp.toInteger() - commitTimestamp.toInteger()
                     def ageInDays = ageInSeconds / (60 * 60 * 24)
                     
-                    // Archive branches older than 15 days
-                    if (ageInDays > 15) {
-                        branchesToArchive.add(branches)
-                    }
+                    // Identify branches to archive based on age
+                    branches.each { branch ->
+                        // Clean up branch name by removing 'origin/' prefix
+                        def branchName = branch.replace("origin/", "").trim()
 
-                    // Delete branches older than 30 days
-                    if (ageInDays > 30) {
-                        branchesToDelete.add(branches)
+                        if (branchName != "main") {  // Skip the main branch
+                            if (ageInDays > 15) {
+                                branchesToArchive.add(branchName)
+                            }
+                            if (ageInDays > 30) {
+                                branchesToDelete.add(branchName)
+                            }
+                        }
                     }
                     
-                    // Output results
+                    // Output results for debugging
                     echo "Branches to archive: ${branchesToArchive}"
                     echo "Branches to delete: ${branchesToDelete}"
                     
-                    // Save the branches lists as environment variables
+                    // Save the branch lists as environment variables
                     env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(",")
                     env.BRANCHES_TO_DELETE = branchesToDelete.join(",")
                 }
@@ -63,13 +68,16 @@ pipeline {
         stage('Notify Teams') {
             steps {
                 script {
+                    // Notify via email if there are branches to archive or delete
                     if (env.BRANCHES_TO_ARCHIVE) {
-                        // Send an email notification for archiving branches
-                        emailext subject: "Branches to Archive", body: "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}", to: "navaneetha.22june@gmail.com"
+                        emailext subject: "Branches to Archive", 
+                                 body: "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}", 
+                                 to: "navaneetha.22june@gmail.com"
                     }
                     if (env.BRANCHES_TO_DELETE) {
-                        // Send an email notification for deleting branches
-                        emailext subject: "Branches to Delete", body: "Branches to delete: ${env.BRANCHES_TO_DELETE}", to: "navaneetha.22june@gmail.com"
+                        emailext subject: "Branches to Delete", 
+                                 body: "Branches to delete: ${env.BRANCHES_TO_DELETE}", 
+                                 to: "navaneetha.22june@gmail.com"
                     }
                 }
             }
