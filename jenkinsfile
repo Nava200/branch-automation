@@ -20,50 +20,51 @@ pipeline {
             }
         }
 
-        stage('Identify Branches') {
-            steps {
-                script {
-                    // Get the list of remote branches
-                    def branches = sh(script: "git branch -r", returnStdout: true).trim().split("\n")
-                    def branchesToArchive = []
-                    def branchesToDelete = []
+       stage('Identify Branches') {
+    steps {
+        script {
+            // Get the list of remote branches
+            def branches = sh(script: "git branch -r", returnStdout: true).trim().split("\n")
+            def branchesToArchive = []
+            def branchesToDelete = []
 
-                    // Get the last commit date of the main branch
-                    def lastCommitDate = sh(script: "git log -1 --format=%cd origin/${BRANCH_NAME}", returnStdout: true).trim()
-                    
-                    // Convert the date to seconds
-                    def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
-                    def currentTimestamp = sh(script: "date +%s", returnStdout: true).trim()
+            // Get the last commit date of the main branch (in ISO 8601 format)
+            def lastCommitDate = sh(script: "git log -1 --date=iso --format=%cd origin/${BRANCH_NAME}", returnStdout: true).trim()
 
-                    // Calculate the age of the branch in days
-                    def ageInSeconds = currentTimestamp.toInteger() - commitTimestamp.toInteger()
-                    def ageInDays = ageInSeconds / (60 * 60 * 24)
-                    
-                    // Identify branches to archive based on age
-                    branches.each { branch ->
-                        // Clean up branch name by removing 'origin/' prefix
-                        def branchName = branch.replace("origin/", "").trim()
+            // Convert the date to seconds using the ISO 8601 format
+            def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
+            def currentTimestamp = sh(script: "date +%s", returnStdout: true).trim()
 
-                        if (branchName != "main") {  // Skip the main branch
-                            if (ageInDays > 15) {
-                                branchesToArchive.add(branchName)
-                            }
-                            if (ageInDays > 30) {
-                                branchesToDelete.add(branchName)
-                            }
-                        }
+            // Calculate the age of the branch in days
+            def ageInSeconds = currentTimestamp.toInteger() - commitTimestamp.toInteger()
+            def ageInDays = ageInSeconds / (60 * 60 * 24)
+            
+            // Identify branches to archive based on age
+            branches.each { branch ->
+                // Clean up branch name by removing 'origin/' prefix
+                def branchName = branch.replace("origin/", "").trim()
+
+                if (branchName != "main") {  // Skip the main branch
+                    if (ageInDays > 15) {
+                        branchesToArchive.add(branchName)
                     }
-                    
-                    // Output results for debugging
-                    echo "Branches to archive: ${branchesToArchive}"
-                    echo "Branches to delete: ${branchesToDelete}"
-                    
-                    // Save the branch lists as environment variables
-                    env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(",")
-                    env.BRANCHES_TO_DELETE = branchesToDelete.join(",")
+                    if (ageInDays > 30) {
+                        branchesToDelete.add(branchName)
+                    }
                 }
             }
+            
+            // Output results for debugging
+            echo "Branches to archive: ${branchesToArchive}"
+            echo "Branches to delete: ${branchesToDelete}"
+            
+            // Save the branch lists as environment variables
+            env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(",")
+            env.BRANCHES_TO_DELETE = branchesToDelete.join(",")
         }
+    }
+}
+
 
         stage('Notify Teams') {
             steps {
