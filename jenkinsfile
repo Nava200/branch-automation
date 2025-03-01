@@ -1,84 +1,82 @@
 pipeline {
     agent any
+
+    environment {
+        GIT_REPO = "https://github.com/Nava200/branch-automation.git"
+        GIT_CREDENTIALS = "github-automation" // Ensure that this is correctly configured in Jenkins
+    }
+
     stages {
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Verify Git Branches') {
             steps {
                 script {
-                    echo "Fetching all remote branches"
-                    sh "git -C repo--587256863 fetch --all"
-                    def branches = sh(script: "git -C repo--587256863 branch -r", returnStdout: true).trim().split("\n")
+                    echo 'Fetching all remote branches'
+                    sh 'git fetch --all'
+
+                    def branches = sh(script: 'git branch -r', returnStdout: true).trim().split('\n')
                     echo "Fetched branches: ${branches}"
-                    
-                    def branchesToArchive = []
-                    def branchesToDelete = []
-                    def currentDate = new Date()
 
-                    // Loop through each branch and check the commit date
+                    // Set the current date
+                    def currentDate = java.time.LocalDate.now()
+                    def formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+
                     branches.each { branch ->
-                        if (branch.startsWith("origin/")) {
-                            def branchName = branch.replace("origin/", "")
+                        // Checking if branch is not the main branch
+                        if (!branch.contains("main")) {
+                            // Get the last commit date for each branch
+                            def branchName = branch.replace("origin/", "").trim()
                             echo "Checking branch: ${branchName}"
-                            def branchDate = sh(script: "git -C repo--587256863 log -1 --format=%cd ${branch}", returnStdout: true).trim()
-                            def branchCommitDate = Date.parse("EEE MMM dd HH:mm:ss yyyy Z", branchDate)
-                            
-                            // Archive branches older than 10 days
-                            if ((currentDate - branchCommitDate) > 10) {
-                                branchesToArchive.add(branchName)
-                            }
-                            
-                            // Delete branches older than 20 days
-                            if ((currentDate - branchCommitDate) > 20) {
-                                branchesToDelete.add(branchName)
-                            }
-                        }
-                    }
-                    
-                    echo "Branches to archive: ${branchesToArchive}"
-                    echo "Branches to delete: ${branchesToDelete}"
-                    
-                    // Pass these branches to the next steps
-                    env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(',')
-                    env.BRANCHES_TO_DELETE = branchesToDelete.join(',')
-                }
-            }
-        }
 
-        stage('Identify Branches to Archive/Remove') {
-            steps {
-                script {
-                    // Archive the branches
-                    if (env.BRANCHES_TO_ARCHIVE) {
-                        echo "Archiving the following branches: ${env.BRANCHES_TO_ARCHIVE}"
-                        // Example backup process (create a backup of the branches before deletion)
-                        def backupBranchScript = """
-                            git -C repo--587256863 checkout -b backup-branches
-                            git -C repo--587256863 push origin backup-branches
-                        """
-                        sh script: backupBranchScript, returnStdout: true
-                        
-                        // Here you could implement any archiving logic (e.g., move to another repo or create a file backup)
-                    }
+                            def commitDateStr = sh(script: "git log -1 --format=%cd origin/${branchName}", returnStdout: true).trim()
+                            def commitDate = java.time.LocalDate.parse(commitDateStr, formatter)
 
-                    // Delete the branches
-                    if (env.BRANCHES_TO_DELETE) {
-                        echo "Deleting the following branches: ${env.BRANCHES_TO_DELETE}"
-                        // Example delete command (ensure you have the correct permission to delete)
-                        env.BRANCHES_TO_DELETE.split(',').each { branch ->
-                            sh "git -C repo--587256863 push origin --delete ${branch}"
+                            // Calculate days difference
+                            def daysDifference = java.time.temporal.ChronoUnit.DAYS.between(commitDate, currentDate)
+                            echo "Days since last commit on ${branchName}: ${daysDifference}"
+
+                            // Determine if the branch should be archived or deleted
+                            if (daysDifference > 10 && daysDifference <= 20) {
+                                echo "Archiving branch: ${branchName}"
+                                // Add logic for archiving the branch, e.g., backup to a different repository or file
+                            }
+                            if (daysDifference > 20) {
+                                echo "Deleting branch: ${branchName}"
+                                // Logic to delete the branch
+                                sh "git push origin --delete ${branchName}"
+                            }
                         }
                     }
                 }
             }
         }
-        
+
         stage('Notify Teams') {
             steps {
-                emailext(
-                    subject: "Branch Automation - Action Summary",
-                    body: "The following branches were archived: ${env.BRANCHES_TO_ARCHIVE}\nThe following branches were deleted: ${env.BRANCHES_TO_DELETE}",
-                    to: "navaneetha.22june@gmail.com"
-                )
+                script {
+                    echo 'Notifying teams about archived and deleted branches'
+                    // Add your notification logic here, e.g., using email or Slack
+                    // e.g., emailext subject: "Branch Deletion Notification", body: "Branches deleted", to: "team@example.com"
+                }
             }
+        }
+    }
+
+    post {
+        always {
+            echo 'Cleaning up workspace'
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed, check logs for details'
         }
     }
 }
