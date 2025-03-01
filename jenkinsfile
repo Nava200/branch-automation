@@ -11,8 +11,7 @@ pipeline {
     stages {
         stage('Checkout SCM') {
             steps {
-                // Remove this as we are cloning the repository in the next stage
-                // checkout scm
+                checkout scm
             }
         }
 
@@ -48,15 +47,8 @@ pipeline {
                     def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
                     def parsedDate = sdf.parse(commitDate)
 
-                    // Debugging: Print fetched branches and commit date
-                    echo "Fetched branches: ${branches}"
-                    echo "Commit Date: ${parsedDate}"
-
                     // Example condition for archiving: branches with "feature" in the name
                     branches.each { branch ->
-                        branch = branch.trim()  // Remove extra whitespaces
-                        echo "Checking branch: ${branch}"
-
                         if (branch.contains("feature")) {
                             archiveBranches.add(branch)
                         }
@@ -97,9 +89,6 @@ def isOlderThan(Date commitDate, String branch) {
     def branchDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
     def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
     def parsedBranchDate = sdf.parse(branchDate)
-
-    // Debugging: Print parsed branch date
-    echo "Branch ${branch} Date: ${parsedBranchDate}"
 
     // Compare commit date with branch date
     return parsedBranchDate.before(commitDate)
