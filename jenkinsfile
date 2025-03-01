@@ -7,7 +7,6 @@ pipeline {
         BRANCHES_TO_ARCHIVE = ''  // Placeholder for storing branches to archive
         BRANCHES_TO_DELETE = ''  // Placeholder for storing branches to delete
     }
-
     stages {
         stage('Checkout SCM') {
             steps {
