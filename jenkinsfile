@@ -1,17 +1,14 @@
 pipeline {
     agent any
-
     environment {
-        GIT_REPO = 'https://github.com/Nava200/branch-automation.git'  // Repo URL
-        GIT_CREDENTIALS = 'github-automation'  // GitHub credentials
+        GIT_REPO = 'https://github.com/Nava200/branch-automation.git'
+        GIT_CREDENTIALS = 'github-automation'
     }
 
     stages {
         stage('Checkout Repository') {
             steps {
                 script {
-                    // Checkout the repository
-                    echo "Cloning repository: ${GIT_REPO}"
                     checkout scm: [
                         $class: 'GitSCM',
                         branches: [[name: 'origin/main']],
@@ -21,49 +18,32 @@ pipeline {
             }
         }
 
-        stage('Fetch and Identify Branches to Archive/Remove') {
+        stage('Identify Branches') {
             steps {
                 script {
                     def archiveBranches = []
                     def deleteBranches = []
 
-                    // Fetch all branches from the repository
-                    echo "Fetching all remote branches for repository: ${GIT_REPO}"
+                    // Get all branches
                     def branches = sh(script: 'git branch -r', returnStdout: true).trim().split("\n")
-                    echo "Fetched branches: ${branches}"
-
-                    // Loop through each branch and check the last commit date
                     branches.each { branch ->
                         if (branch.startsWith("origin/")) {
                             def branchName = branch.replace("origin/", "").trim()
-
-                            // Get the last commit date of the branch
                             def lastCommitDate = sh(script: "git log -1 --format=%cd ${branch}", returnStdout: true).trim()
-                            echo "Last commit date for ${branchName}: ${lastCommitDate}"
-
-                            // Convert last commit date to Date object
                             def commitDate = Date.parse("EEE MMM dd HH:mm:ss yyyy Z", lastCommitDate)
-                            def currentDate = new Date()
-                            def diffInDays = (currentDate - commitDate) / (1000 * 60 * 60 * 24)  // Difference in days
+                            def diffInDays = (new Date() - commitDate) / (1000 * 60 * 60 * 24)
 
-                            // Archiving condition: Branches older than 15 days
                             if (diffInDays > 15) {
                                 archiveBranches.add(branchName)
                             }
-
-                            // Deletion condition: Branches older than 30 days
                             if (diffInDays > 30) {
                                 deleteBranches.add(branchName)
                             }
                         }
                     }
 
-                    // Set the archive and delete lists to environment variables
                     env.BRANCHES_TO_ARCHIVE = archiveBranches.join(', ')
                     env.BRANCHES_TO_DELETE = deleteBranches.join(', ')
-
-                    echo "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}"
-                    echo "Branches to delete: ${env.BRANCHES_TO_DELETE}"
                 }
             }
         }
@@ -71,12 +51,13 @@ pipeline {
         stage('Notify Teams') {
             steps {
                 script {
-                    // Send email notifications about the branches to archive or delete
                     emailext(
-                        subject: "Branches to Archive/Remove",
-                        body: "Following branches need to be archived: ${env.BRANCHES_TO_ARCHIVE}\n\n" +
-                              "Following branches are identified for deletion: ${env.BRANCHES_TO_DELETE}",
-                        to: "navaneetha.22june@gmail.com"  // Replace with actual recipient email(s)
+                        subject: "Branches to Archive/Delete",
+                        body: """
+                            Branches to archive: ${env.BRANCHES_TO_ARCHIVE}
+                            Branches to delete: ${env.BRANCHES_TO_DELETE}
+                        """,
+                        to: "navaneetha.22june@gmail.com"
                     )
                 }
             }
@@ -90,9 +71,7 @@ pipeline {
                 script {
                     def branchesToArchive = env.BRANCHES_TO_ARCHIVE.split(', ')
                     branchesToArchive.each { branch ->
-                        // Add archiving logic here (e.g., create a tag, zip the branch content, etc.)
-                        echo "Archiving branch: ${branch}"
-                        // Example of tagging the branch before archiving
+                        // Archiving logic (e.g., tag the branch)
                         sh "git checkout ${branch}"
                         sh "git tag archived-${branch}"
                     }
@@ -108,8 +87,7 @@ pipeline {
                 script {
                     def branchesToDelete = env.BRANCHES_TO_DELETE.split(', ')
                     branchesToDelete.each { branch ->
-                        // Add deletion logic here (e.g., delete the branch from the remote)
-                        echo "Deleting branch: ${branch}"
+                        // Deletion logic
                         sh "git push origin --delete ${branch}"
                     }
                 }
@@ -119,32 +97,7 @@ pipeline {
 
     post {
         always {
-            echo 'Cleaning up workspace'
             cleanWs()
-        }
-        success {
-            echo 'Pipeline completed successfully'
-        }
-        failure {
-            echo 'Pipeline failed, check logs for details'
-        }
-
-        // Send email notification after the pipeline is complete
-        always {
-            script {
-                emailext(
-                    subject: "Jenkins Pipeline: ${currentBuild.fullDisplayName} - ${currentBuild.result}",
-                    body: """
-                        The Jenkins pipeline ${currentBuild.fullDisplayName} has finished with result: ${currentBuild.result}.
-                        
-                        Branches archived: ${env.BRANCHES_TO_ARCHIVE}
-                        Branches deleted: ${env.BRANCHES_TO_DELETE}
-                        
-                        Please check the logs for details.
-                    """,
-                    to: "navaneetha.22june@gmail.com"  // Replace with actual email address
-                )
-            }
         }
     }
 }
