@@ -1,19 +1,21 @@
 pipeline {
     agent any
+    
     environment {
-        GIT_REPO = 'https://github.com/Nava200/branch-automation.git'
-        GIT_CREDENTIALS = 'github-automation'
+        GITHUB_CREDENTIALS = 'github-automation'  // GitHub credentials ID for Jenkins
+        REPO_URL = 'https://github.com/Nava200/branch-automation.git'
+        BRANCH_NAME = 'main'
     }
 
     stages {
-        stage('Checkout Repository') {
+        stage('Checkout SCM') {
             steps {
                 script {
-                    checkout scm: [
-                        $class: 'GitSCM',
-                        branches: [[name: 'origin/main']],
-                        userRemoteConfigs: [[url: GIT_REPO, credentialsId: GIT_CREDENTIALS]]
-                    ]
+                    // Checkout the Git repository using the defined GitHub credentials
+                    checkout([$class: 'GitSCM', 
+                        branches: [[name: "*/${BRANCH_NAME}"]],
+                        userRemoteConfigs: [[url: "${REPO_URL}", credentialsId: "${GITHUB_CREDENTIALS}"]]
+                    ])
                 }
             }
         }
@@ -21,32 +23,39 @@ pipeline {
         stage('Identify Branches') {
             steps {
                 script {
-                    def archiveBranches = []
-                    def deleteBranches = []
+                    // Get the list of remote branches
+                    def branches = sh(script: "git branch -r", returnStdout: true).trim().split("\n")
+                    def branchesToArchive = []
+                    def branchesToDelete = []
+                    
+                    // Get the last commit date of the main branch
+                    def lastCommitDate = sh(script: "git log -1 --format=%cd origin/main", returnStdout: true).trim()
+                    
+                    // Convert the date to seconds
+                    def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
+                    def currentTimestamp = sh(script: "date +%s", returnStdout: true).trim()
 
-                    // Get all branches
-                    def branches = sh(script: 'git branch -r', returnStdout: true).trim().split("\n")
-                    branches.each { branch ->
-                        if (branch.startsWith("origin/")) {
-                            def branchName = branch.replace("origin/", "").trim()
-                            def lastCommitDate = sh(script: "git log -1 --format=%cd ${branch}", returnStdout: true).trim()
-
-                            // Convert the commit date to a timestamp and calculate the difference in days
-                            def commitTimestamp = sh(script: "date -d \"${lastCommitDate}\" +%s", returnStdout: true).trim().toLong()
-                            def currentTimestamp = new Date().getTime() / 1000
-                            def diffInDays = (currentTimestamp - commitTimestamp) / (60 * 60 * 24)
-
-                            if (diffInDays > 15) {
-                                archiveBranches.add(branchName)
-                            }
-                            if (diffInDays > 30) {
-                                deleteBranches.add(branchName)
-                            }
-                        }
+                    // Calculate the age of the branch in days
+                    def ageInSeconds = currentTimestamp.toInteger() - commitTimestamp.toInteger()
+                    def ageInDays = ageInSeconds / (60 * 60 * 24)
+                    
+                    // Archive branches older than 15 days
+                    if (ageInDays > 15) {
+                        branchesToArchive.add(branches)
                     }
 
-                    env.BRANCHES_TO_ARCHIVE = archiveBranches.join(', ')
-                    env.BRANCHES_TO_DELETE = deleteBranches.join(', ')
+                    // Delete branches older than 30 days
+                    if (ageInDays > 30) {
+                        branchesToDelete.add(branches)
+                    }
+                    
+                    // Output results
+                    echo "Branches to archive: ${branchesToArchive}"
+                    echo "Branches to delete: ${branchesToDelete}"
+                    
+                    // Save the branches lists as environment variables
+                    env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(",")
+                    env.BRANCHES_TO_DELETE = branchesToDelete.join(",")
                 }
             }
         }
@@ -54,44 +63,43 @@ pipeline {
         stage('Notify Teams') {
             steps {
                 script {
-                    emailext(
-                        subject: "Branches to Archive/Delete",
-                        body: """
-                            Branches to archive: ${env.BRANCHES_TO_ARCHIVE}
-                            Branches to delete: ${env.BRANCHES_TO_DELETE}
-                        """,
-                        to: "navaneetha.22june@gmail.com"
-                    )
+                    if (env.BRANCHES_TO_ARCHIVE) {
+                        // Send an email notification for archiving branches
+                        emailext subject: "Branches to Archive", body: "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}", to: "navaneetha.22june@gmail.com"
+                    }
+                    if (env.BRANCHES_TO_DELETE) {
+                        // Send an email notification for deleting branches
+                        emailext subject: "Branches to Delete", body: "Branches to delete: ${env.BRANCHES_TO_DELETE}", to: "navaneetha.22june@gmail.com"
+                    }
                 }
             }
         }
 
         stage('Archive Branches') {
-            when {
-                expression { return env.BRANCHES_TO_ARCHIVE != '' }
-            }
             steps {
                 script {
-                    def branchesToArchive = env.BRANCHES_TO_ARCHIVE.split(', ')
-                    branchesToArchive.each { branch ->
-                        // Archiving logic (e.g., tag the branch)
-                        sh "git checkout ${branch}"
-                        sh "git tag archived-${branch}"
+                    if (env.BRANCHES_TO_ARCHIVE) {
+                        def branchesToArchive = env.BRANCHES_TO_ARCHIVE.split(",")
+                        branchesToArchive.each { branch ->
+                            // Archive the branch
+                            echo "Archiving branch: ${branch}"
+                            // Replace this with actual archiving logic if needed
+                        }
                     }
                 }
             }
         }
 
         stage('Delete Branches') {
-            when {
-                expression { return env.BRANCHES_TO_DELETE != '' }
-            }
             steps {
                 script {
-                    def branchesToDelete = env.BRANCHES_TO_DELETE.split(', ')
-                    branchesToDelete.each { branch ->
-                        // Deletion logic
-                        sh "git push origin --delete ${branch}"
+                    if (env.BRANCHES_TO_DELETE) {
+                        def branchesToDelete = env.BRANCHES_TO_DELETE.split(",")
+                        branchesToDelete.each { branch ->
+                            // Delete the branch
+                            echo "Deleting branch: ${branch}"
+                            // Replace this with actual deletion logic if needed
+                        }
                     }
                 }
             }
@@ -100,7 +108,7 @@ pipeline {
 
     post {
         always {
-            cleanWs()
+            cleanWs()  // Clean workspace after the pipeline runs
         }
     }
 }
