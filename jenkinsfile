@@ -61,19 +61,24 @@ pipeline {
         }
 
         stage('Notify Teams') {
-            steps {
-                script {
-                    if (env.BRANCHES_TO_ARCHIVE) {
-                        // Send an email notification for archiving branches
-                        emailext subject: "Branches to Archive", body: "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}", to: "navaneetha.22june@gmail.com"
-                    }
-                    if (env.BRANCHES_TO_DELETE) {
-                        // Send an email notification for deleting branches
-                        emailext subject: "Branches to Delete", body: "Branches to delete: ${env.BRANCHES_TO_DELETE}", to: "navaneetha.22june@gmail.com"
-                    }
+    steps {
+        script {
+            // Send email notification regardless of whether branches were found or not
+            if (env.BRANCHES_TO_ARCHIVE || env.BRANCHES_TO_DELETE) {
+                if (env.BRANCHES_TO_ARCHIVE) {
+                    emailext subject: "Branches to Archive", body: "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}", to: "navaneetha.22june@gmail.com"
                 }
+                if (env.BRANCHES_TO_DELETE) {
+                    emailext subject: "Branches to Delete", body: "Branches to delete: ${env.BRANCHES_TO_DELETE}", to: "navaneetha.22june@gmail.com"
+                }
+            } else {
+                // Send email even if no branches are archived or deleted
+                emailext subject: "No Branches Archived or Deleted", body: "No branches met the criteria for archiving or deletion.", to: "navaneetha.22june@gmail.com"
             }
         }
+    }
+}
+
 
         stage('Archive Branches') {
             steps {
