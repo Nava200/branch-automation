@@ -2,27 +2,30 @@ pipeline {
     agent any
 
     environment {
-        // Define the Git credentials ID stored in Jenkins
         GIT_CREDENTIALS = 'github-automation'
-        REPO = 'https://github.com/Nava200/branch-automation.git' // List of repositories to check
+        REPO = 'https://github.com/Nava200/branch-automation.git'  // Your repository URL
         BRANCHES_TO_ARCHIVE = ''  // Placeholder for storing branches to archive
         BRANCHES_TO_DELETE = ''  // Placeholder for storing branches to delete
     }
 
     stages {
-        stage('Checkout Repositories') {
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Checkout Repository') {
             steps {
                 script {
-                    // Checkout each repository
-                    REPOS.each { repo ->
-                        echo "Cloning repository: ${repo}"
-                        dir("repo-${repo.hashCode()}") {  // Ensures each repo is cloned to a unique folder
-                            checkout scm: [
-                                $class: 'GitSCM',
-                                branches: [[name: '*/main']],
-                                userRemoteConfigs: [[url: repo, credentialsId: GIT_CREDENTIALS]]
-                            ]
-                        }
+                    // Clone the single repository
+                    echo "Cloning repository: ${REPO}"
+                    dir("repo-${REPO.hashCode()}") {  // Ensure the repo is cloned to a unique folder
+                        checkout scm: [
+                            $class: 'GitSCM',
+                            branches: [[name: '*/main']],
+                            userRemoteConfigs: [[url: REPO, credentialsId: GIT_CREDENTIALS]]
+                        ]
                     }
                 }
             }
@@ -34,26 +37,22 @@ pipeline {
                     def archiveBranches = []
                     def deleteBranches = []
 
-                    REPOS.each { repo ->
-                        def repoDir = "repo-${repo.hashCode()}"
-                        
-                        // Fetch all remote branches for each repository
-                        def branches = sh(script: "git -C ${repoDir} branch -r", returnStdout: true).trim().split("\n")
-                        def commitDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/main", returnStdout: true).trim()
+                    // Fetch all remote branches
+                    def branches = sh(script: "git -C repo-${REPO.hashCode()} branch -r", returnStdout: true).trim().split("\n")
+                    def commitDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/main", returnStdout: true).trim()
 
-                        // Parse the commit date using SimpleDateFormat
-                        def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-                        def parsedDate = sdf.parse(commitDate)
+                    // Parse the commit date using SimpleDateFormat
+                    def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
+                    def parsedDate = sdf.parse(commitDate)
 
-                        // Example condition for archiving: branches with "feature" in the name
-                        branches.each { branch ->
-                            if (branch.contains("feature")) {
-                                archiveBranches.add(branch)
-                            }
-                            // Example condition for deletion: branches older than a certain date or with "obsolete" in the name
-                            if (branch.contains("obsolete") || isOlderThan(parsedDate, branch, repoDir)) {
-                                deleteBranches.add(branch)
-                            }
+                    // Example condition for archiving: branches with "feature" in the name
+                    branches.each { branch ->
+                        if (branch.contains("feature")) {
+                            archiveBranches.add(branch)
+                        }
+                        // Example condition for deletion: branches older than a certain date or with "obsolete" in the name
+                        if (branch.contains("obsolete") || isOlderThan(parsedDate, branch)) {
+                            deleteBranches.add(branch)
                         }
                     }
 
@@ -83,9 +82,9 @@ pipeline {
     }
 }
 
-def isOlderThan(Date commitDate, String branch, String repoDir) {
+def isOlderThan(Date commitDate, String branch) {
     // Example logic to check if a branch is older than a specific date
-    def branchDate = sh(script: "git -C ${repoDir} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
+    def branchDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
     def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
     def parsedBranchDate = sdf.parse(branchDate)
 
