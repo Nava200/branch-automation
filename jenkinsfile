@@ -1,43 +1,44 @@
 pipeline {
     agent any
-
-    environment {
-        GIT_CREDENTIALS = 'github-automation'
-        REPO = 'https://github.com/Nava200/branch-automation.git'  // Your repository URL
-        BRANCHES_TO_ARCHIVE = ''  // Placeholder for storing branches to archive
-        BRANCHES_TO_DELETE = ''  // Placeholder for storing branches to delete
-    }
-
     stages {
-        stage('Checkout SCM') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Checkout Repository') {
-            steps {
-                script {
-                    // Clone the single repository
-                    echo "Cloning repository: ${REPO}"
-                    dir("repo-${REPO.hashCode()}") {  // Ensure the repo is cloned to a unique folder
-                        checkout scm: [
-                            $class: 'GitSCM',
-                            branches: [[name: 'origin/main']],
-                            userRemoteConfigs: [[url: REPO, credentialsId: GIT_CREDENTIALS]]
-                        ]
-                    }
-                }
-            }
-        }
-
         stage('Verify Git Branches') {
             steps {
                 script {
-                    // Verify the remote references by fetching all remote branches
                     echo "Fetching all remote branches"
-                    sh "git -C repo-${REPO.hashCode()} fetch --all"
-                    sh "git -C repo-${REPO.hashCode()} branch -r"
+                    sh "git -C repo--587256863 fetch --all"
+                    def branches = sh(script: "git -C repo--587256863 branch -r", returnStdout: true).trim().split("\n")
+                    echo "Fetched branches: ${branches}"
+                    
+                    def branchesToArchive = []
+                    def branchesToDelete = []
+                    def currentDate = new Date()
+
+                    // Loop through each branch and check the commit date
+                    branches.each { branch ->
+                        if (branch.startsWith("origin/")) {
+                            def branchName = branch.replace("origin/", "")
+                            echo "Checking branch: ${branchName}"
+                            def branchDate = sh(script: "git -C repo--587256863 log -1 --format=%cd ${branch}", returnStdout: true).trim()
+                            def branchCommitDate = Date.parse("EEE MMM dd HH:mm:ss yyyy Z", branchDate)
+                            
+                            // Archive branches older than 10 days
+                            if ((currentDate - branchCommitDate) > 10) {
+                                branchesToArchive.add(branchName)
+                            }
+                            
+                            // Delete branches older than 20 days
+                            if ((currentDate - branchCommitDate) > 20) {
+                                branchesToDelete.add(branchName)
+                            }
+                        }
+                    }
+                    
+                    echo "Branches to archive: ${branchesToArchive}"
+                    echo "Branches to delete: ${branchesToDelete}"
+                    
+                    // Pass these branches to the next steps
+                    env.BRANCHES_TO_ARCHIVE = branchesToArchive.join(',')
+                    env.BRANCHES_TO_DELETE = branchesToDelete.join(',')
                 }
             }
         }
@@ -45,68 +46,39 @@ pipeline {
         stage('Identify Branches to Archive/Remove') {
             steps {
                 script {
-                    def archiveBranches = []
-                    def deleteBranches = []
-
-                    // Fetch all remote branches (Ensure to use correct branch reference)
-                    def branches = sh(script: "git -C repo-${REPO.hashCode()} branch -r", returnStdout: true).trim().split("\n")
-                    echo "Fetched branches: ${branches}"
-
-                    // Fetch the commit date of the 'main' branch
-                    def commitDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/main", returnStdout: true).trim()
-                    echo "Main branch commit date: ${commitDate}"
-
-                    // Parse the commit date using SimpleDateFormat
-                    def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-                    def parsedDate = sdf.parse(commitDate)
-
-                    // Example condition for archiving: branches with "feature" in the name
-                    branches.each { branch ->
-                        // Clean up the branch name to remove "origin/" prefix
-                        def cleanBranchName = branch.replaceAll("origin/", "").trim()
-
-                        if (cleanBranchName.contains("feature")) {
-                            archiveBranches.add(cleanBranchName)
-                        }
-                        // Example condition for deletion: branches older than a certain date or with "obsolete" in the name
-                        if (cleanBranchName.contains("obsolete") || isOlderThan(parsedDate, cleanBranchName)) {
-                            deleteBranches.add(cleanBranchName)
-                        }
+                    // Archive the branches
+                    if (env.BRANCHES_TO_ARCHIVE) {
+                        echo "Archiving the following branches: ${env.BRANCHES_TO_ARCHIVE}"
+                        // Example backup process (create a backup of the branches before deletion)
+                        def backupBranchScript = """
+                            git -C repo--587256863 checkout -b backup-branches
+                            git -C repo--587256863 push origin backup-branches
+                        """
+                        sh script: backupBranchScript, returnStdout: true
+                        
+                        // Here you could implement any archiving logic (e.g., move to another repo or create a file backup)
                     }
 
-                    // Set the archive and delete lists to environment variables
-                    env.BRANCHES_TO_ARCHIVE = archiveBranches.join(', ')
-                    env.BRANCHES_TO_DELETE = deleteBranches.join(', ')
-
-                    echo "Branches to archive: ${env.BRANCHES_TO_ARCHIVE}"
-                    echo "Branches to delete: ${env.BRANCHES_TO_DELETE}"
+                    // Delete the branches
+                    if (env.BRANCHES_TO_DELETE) {
+                        echo "Deleting the following branches: ${env.BRANCHES_TO_DELETE}"
+                        // Example delete command (ensure you have the correct permission to delete)
+                        env.BRANCHES_TO_DELETE.split(',').each { branch ->
+                            sh "git -C repo--587256863 push origin --delete ${branch}"
+                        }
+                    }
                 }
             }
         }
-
+        
         stage('Notify Teams') {
             steps {
-                script {
-                    // Send email notifications about the branches to archive or delete
-                    emailext(
-                        subject: "Branches to Archive/Remove",
-                        body: "Following branches need to be archived: ${env.BRANCHES_TO_ARCHIVE}\n\n" +
-                              "Following branches are identified for deletion: ${env.BRANCHES_TO_DELETE}",
-                        to: "navaneetha.22june@gmail.com"  // Replace with actual recipient email(s)
-                    )
-                }
+                emailext(
+                    subject: "Branch Automation - Action Summary",
+                    body: "The following branches were archived: ${env.BRANCHES_TO_ARCHIVE}\nThe following branches were deleted: ${env.BRANCHES_TO_DELETE}",
+                    to: "navaneetha.22june@gmail.com"
+                )
             }
         }
     }
-}
-
-// Helper function to check if a branch is older than a given date
-def isOlderThan(Date commitDate, String branch) {
-    // Example logic to check if a branch is older than a specific date
-    def branchDate = sh(script: "git -C repo-${REPO.hashCode()} log -1 --format=%cd origin/${branch}", returnStdout: true).trim()
-    def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
-    def parsedBranchDate = sdf.parse(branchDate)
-
-    // Compare commit date with branch date
-    return parsedBranchDate.before(commitDate)
 }
