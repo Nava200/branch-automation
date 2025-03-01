@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         GIT_CREDENTIALS = 'github-automation'  // GitHub credentials
-        REPOS = ['https://github.com/Nava200/branch-automation.git', 'https://github.com/Nava200/Getting-Started-Terraform.git']  // List of repositories
+        REPOS = ["https://github.com/Nava200/branch-automation.git", "https://github.com/Nava200/Getting-Started-Terraform.git"]  // List of repositories
         BRANCHES_TO_ARCHIVE = ''
         BRANCHES_TO_DELETE = ''
     }
@@ -129,16 +129,7 @@ pipeline {
         always {
             echo 'Cleaning up workspace'
             cleanWs()
-        }
-        success {
-            echo 'Pipeline completed successfully'
-        }
-        failure {
-            echo 'Pipeline failed, check logs for details'
-        }
 
-        // Send email notification after the pipeline is complete
-        always {
             script {
                 emailext (
                     subject: "Jenkins Pipeline: ${currentBuild.fullDisplayName} - ${currentBuild.result}",
