@@ -62,12 +62,15 @@ pipeline {
 
                     // Example condition for archiving: branches with "feature" in the name
                     branches.each { branch ->
-                        if (branch.contains("feature")) {
-                            archiveBranches.add(branch)
+                        // Clean up the branch name to remove "origin/" prefix
+                        def cleanBranchName = branch.replaceAll("origin/", "").trim()
+
+                        if (cleanBranchName.contains("feature")) {
+                            archiveBranches.add(cleanBranchName)
                         }
                         // Example condition for deletion: branches older than a certain date or with "obsolete" in the name
-                        if (branch.contains("obsolete") || isOlderThan(parsedDate, branch)) {
-                            deleteBranches.add(branch)
+                        if (cleanBranchName.contains("obsolete") || isOlderThan(parsedDate, cleanBranchName)) {
+                            deleteBranches.add(cleanBranchName)
                         }
                     }
 
