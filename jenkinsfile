@@ -49,13 +49,13 @@ stage('Identify Branches') {
                 // Convert the age to minutes
                 def ageInMinutes = ageInSeconds / 60
 
-                // Archive branches older than 900 minutes (15 hours)
-                if (ageInMinutes > 900) {
+                // Archive branches older than 90 minutes (15 hours)
+                if (ageInMinutes > 90) {
                     branchesToArchive.add(branchName)
                 }
 
-                // Delete branches older than 1800 minutes (30 hours)
-                if (ageInMinutes > 1800) {
+                // Delete branches older than 180 minutes (30 hours)
+                if (ageInMinutes > 180) {
                     branchesToDelete.add(branchName)
                 }
             }
