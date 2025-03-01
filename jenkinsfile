@@ -28,10 +28,10 @@ pipeline {
                     def branchesToArchive = []
                     def branchesToDelete = []
                     
-                    // Get the last commit date of the main branch
-                    def lastCommitDate = sh(script: "git log -1 --format=%cd origin/main", returnStdout: true).trim()
+                    // Get the last commit date of the main branch in a standardized format (YYYY-MM-DD HH:MM:SS)
+                    def lastCommitDate = sh(script: "git show -s --format=%ci origin/main", returnStdout: true).trim()
                     
-                    // Convert the date to seconds
+                    // Convert the date to seconds using a format that `date` can process
                     def commitTimestamp = sh(script: "date -d '${lastCommitDate}' +%s", returnStdout: true).trim()
                     def currentTimestamp = sh(script: "date +%s", returnStdout: true).trim()
 
