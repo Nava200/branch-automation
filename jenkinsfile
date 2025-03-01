@@ -5,12 +5,12 @@ pipeline {
         // Define the Git credentials ID stored in Jenkins (replace with your actual credentials ID)
         GIT_CREDENTIALS = 'github-automation'
         GIT_REPO = 'https://github.com/Nava200/branch-automation.git'
+        BRANCHES_TO_ARCHIVE = ''  // Placeholder for storing branches to archive
     }
 
     stages {
         stage('Declarative: Checkout SCM') {
             steps {
-                // Checkout the repository using the configured Git credentials
                 checkout scm
             }
         }
@@ -18,9 +18,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 script {
-                    // Use the Git credentials defined in the environment section
                     withCredentials([usernamePassword(credentialsId: GIT_CREDENTIALS, usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
-                        // Fetch the list of remote branches
                         def branches = sh(script: 'git branch -r', returnStdout: true).trim().split("\n")
                         def commitDate = sh(script: 'git log -1 --format=%cd origin/main', returnStdout: true).trim()
 
@@ -28,7 +26,6 @@ pipeline {
                         def sdf = new java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy Z")
                         def parsedDate = sdf.parse(commitDate)
 
-                        // Use parsedDate for further processing if needed
                         echo "Last commit date: ${parsedDate}"
                     }
                 }
@@ -38,11 +35,9 @@ pipeline {
         stage('Identify Branches to Archive/Remove') {
             steps {
                 script {
-                    // Logic to identify branches to archive or remove
-                    // Example logic (customize according to your needs)
                     def branches = sh(script: 'git branch -r', returnStdout: true).trim().split("\n")
                     def archiveBranches = []
-                    
+
                     // Here, you can loop through the branches and apply your archiving logic
                     branches.each { branch ->
                         // Example condition (replace with actual conditions)
@@ -50,7 +45,9 @@ pipeline {
                             archiveBranches.add(branch)
                         }
                     }
-                    
+
+                    // Set the archiveBranches list to an environment variable
+                    env.BRANCHES_TO_ARCHIVE = archiveBranches.join(', ')
                     echo "Branches to archive: ${archiveBranches.join(', ')}"
                 }
             }
@@ -63,7 +60,7 @@ pipeline {
                     // Customize the email logic here
                     emailext(
                         subject: "Branches to Archive/Remove",
-                        body: "Following branches need to be archived or removed: ${archiveBranches.join(', ')}",
+                        body: "Following branches need to be archived or removed: ${env.BRANCHES_TO_ARCHIVE}",
                         to: "navaneetha.22june@gmail.com"  // Update with actual team email addresses
                     )
                 }
