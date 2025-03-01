@@ -4,7 +4,7 @@ pipeline {
     environment {
         // Define the Git credentials ID stored in Jenkins
         GIT_CREDENTIALS = 'github-automation'
-        REPOS = ['https://github.com/Nava200/branch-automation.git', 'https://github.com/another/repo.git'] // List of repositories to check
+        REPOS = ['https://github.com/Nava200/branch-automation.git'] // List of repositories to check
         BRANCHES_TO_ARCHIVE = ''  // Placeholder for storing branches to archive
         BRANCHES_TO_DELETE = ''  // Placeholder for storing branches to delete
     }
