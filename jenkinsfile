@@ -122,4 +122,19 @@ pipeline {
                             def repoDir = "repo-${REPO.hashCode()}"
                             sh "git -C ${repoDir} push origin --delete ${branch}"
                         }
-                
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Cleaning up workspace'
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully'
+        }
+        failure {
+            echo 'Pipeline fai
